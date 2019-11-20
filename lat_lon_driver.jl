@@ -4,19 +4,20 @@ using AutomotiveDrivingModels
 # need to finish observe! function and implement rand function (for action sampling)
 # for action model, will possibly have to write a propagate function specific to this purpose (but maybe not since using IDM and MOBIL)
 # use Frame{E} instead of Scene and Vector{Frame{E}} instead of QueueRecord
-mutable struct lat_lon_driver{LatLonAccel}
-    scenes::Vector{Frame{E}} where E
+mutable struct lat_lon_driver <:DriverModel{LatLonAccel}
+    # scenes::Vector{Frame{E}} where E
     long_model::LaneFollowingDriver
     lat_model::LateralDriverModel
     lane_change_model::LaneChangeModel
+end
 
-    function lat_lon_driver(
-        v::Float64, t::Float64; 
-        long_model::LaneFollowingDriver=IntelligentDriverModel(v),
-        lat_model::LateralDriverModel = ProportionalLaneTracker(),
-        lane_change_model::LaneChangeModel = MOBIL(t)
-        )
-    end
+function lat_lon_driver(
+    v::Float64, t::Float64; 
+    long_model::LaneFollowingDriver=IntelligentDriverModel(v_des=v),
+    lat_model::LateralDriverModel = ProportionalLaneTracker(),
+    lane_change_model::LaneChangeModel = MOBIL(t)
+    )
+    return lat_lon_driver(long_model, lat_model, lane_change_model)
 end
 
 get_name(::lat_lon_driver) = "lat_lon_driver"
@@ -55,3 +56,4 @@ function observe!(driver::lat_lon_driver, scene::Frame{Entity}, roadway::Roadway
     track_longitudinal!(driver.long_model, scene, roadway, vehicle_index)
 
     return driver
+end

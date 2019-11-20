@@ -11,13 +11,13 @@ function lane_available!(des_spot::Tuple{Int, Float64}, spots_taken::Array{Tuple
     # use conditional statement to check if the space is available
     if any([des_spot == spots_taken[i] for i=1:length(spots_taken)])
         # spot is already taken up
-        @show "FALSE"
+        # @show "FALSE"
         return false
     else
-        @show "true"
-        @show spots_taken
-        push!(spots_taken, des_spot)
-        @show spots_taken
+        # @show "true"
+        # @show spots_taken
+        # push!(spots_taken, des_spot)
+        # @show spots_taken
         return true
     end
 end
