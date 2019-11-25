@@ -176,7 +176,7 @@ function is_safe(model::lat_lon_driver, actions::action_space, speed_str::String
     end
 end
 
-# get_actions produces a dictionary mapping of stringts to booleans, determining whether or not the following 9 actions will produce a crash
+# get_actions produces a dictionary mapping of strings to booleans, determining whether or not the following 9 actions will produce a crash
 # 9 available actions (in this order): [slow left, left, speed left, slow straight, straight, speed straight, slow right, right, speed right]
 function get_actions(model::lat_lon_driver, scene::Scene, roadway::Roadway, ego_id::Int)
     max_speed = 50. # use this later 
@@ -189,6 +189,8 @@ function get_actions(model::lat_lon_driver, scene::Scene, roadway::Roadway, ego_
     actions = action_space()
     return get_action_space_dict(actions, model, scene, roadway, vehicle_idx)
 end
+
+
 
 
 # NEED TO DO 
