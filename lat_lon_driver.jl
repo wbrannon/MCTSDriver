@@ -13,7 +13,7 @@ end
 
 function lat_lon_driver(
     v::Float64, t::Float64; 
-    long_model::LaneFollowingDriver=IntelligentDriverModel(v_des=v),
+    long_model::LaneFollowingDriver = IntelligentDriverModel(v_des=v),
     lat_model::LateralDriverModel = ProportionalLaneTracker(),
     lane_change_model::LaneChangeModel = MOBIL(t)
     )
@@ -31,11 +31,11 @@ end
 function AutomotiveDrivingModels.get_lane_offset(a::LaneChangeChoice, scenes::Vector{Frame{E}}, roadway::Roadway, vehicle_index::Int, pastframe::Int=0) where E
     if a.dir == 0 # straight
         return scenes[pastframe][vehicle_index].state.posF.t 
-    elseif a.dir == -1 # left turn
-        return convert(Float64, get(LANEOFFSETLEFT, scenes, roadway, vehicle_index, pastframe))
-    else
-        @assert(a.dir == 1)
+    elseif a.dir == -1 # right turn
         return convert(Float64, get(LANEOFFSETRIGHT, scenes, roadway, vehicle_index, pastframe))
+    else
+        @assert(a.dir == 1) # left turn
+        return convert(Float64, get(LANEOFFSETLEFT, scenes, roadway, vehicle_index, pastframe))
     end
 end
 
