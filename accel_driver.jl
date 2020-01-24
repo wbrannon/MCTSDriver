@@ -12,15 +12,22 @@ MAX_DECEL = 6.
 # - we want to be able to accelerate whenever we want
 # no need to define the propogate function here, as it is already defined in lane_following_accel.jl
 @with_kw mutable struct acceleratingDriver <: LaneFollowingDriver
-    a::Float64 = NaN # longitudinal acceleration passed here
-    σ::Float64 = NaN # optional stdev on top of the model, set to zero or NaN for deterministic behavior
+    a::Float64 = 0. # longitudinal acceleration passed here
+    σ::Float64 = 0. # optional stdev on top of the model, set to zero or NaN for deterministic behavior
     a_max::Float64 = MAX_ACCEL
     d_comfort::Float64 = COMFORTABLE_DECEL # positive
     d_max::Float64 = MAX_DECEL # positive
 end
 
 # don't need track_longitudinal! function, as that is based on headway - to make it work nicely with the way things are currently set out, just define it here
-track_longitudinal!(model::acceleratingDriver, v_ego::Float64, v_oth::Float64, headway::Float64) = model
+function track_longitudinal!(model::acceleratingDriver)
+    if model.a > model.a_max
+        model.a = model.a_max
+    elseif model.a < -model.d_max
+        model.a = -model.d_max
+    end
+    return model
+end
 
 reset_hidden_state!(model::acceleratingDriver) = model
 

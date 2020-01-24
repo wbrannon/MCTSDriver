@@ -10,12 +10,12 @@ using Parameters
 # this may or may not make it easier
 # use populate_env! function to populate roadway
 @with_kw mutable struct laneChangeEnvironment
-    nlanes::Int = 2 # at first, just want to switch one lane
+    nlanes::Int = 3 # at first, just want to switch one lane
     starting_lane::Int = 1
     current_lane::Int = starting_lane
     desired_lane::Int = nlanes
-    ncars::Int = 20            
-    road_length::Float64 = 150.
+    ncars::Int = 29 # refers to cars other than the ego vehicle            
+    road_length::Float64 = 300.
     roadway::Roadway = gen_straight_roadway(nlanes, road_length)
     scene::Scene = Scene()
     ego_idx::Int = 1
@@ -43,11 +43,11 @@ end
 # the same spot every time
 function populate_env!(ncars::Int, nlanes::Int, road_length::Float64, roadway::Roadway, scene::Scene)
     # initialize spots_taken
-    ego_spot = (1, 10.)
-    spots_taken = [(1, 10.), (1,0.)] # make array of tuples to determine if a spot is taken up - this first one is where we want AV to be 
+    ego_spot = (1, 40.)
+    spots_taken = [ego_spot, (1,0.)] # make array of tuples to determine if a spot is taken up - this first one is where we want AV to be 
     curve = roadway[1].lanes[1].curve
-    min_speed = 10.0 # m/s
-    max_speed = 12.0 # m/s 
+    min_speed = 15.0 # m/s
+    max_speed = 25.0 # m/s 
     number_car_placed = 2   # start at 2 because the ego vehicle takes up index 1
     for i in 1:ncars
         car_placed = false
