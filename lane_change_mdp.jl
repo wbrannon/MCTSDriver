@@ -10,21 +10,20 @@ include("action_space.jl")
 include("lane_change_env.jl")
 include("lat_lon_driver.jl")
 
-GOAL_LANE_REWARD = 0.1 #3. #10000.
-FINISH_LINE = 10. #100
-COLLISION_REWARD = -100. #-5000. #-500.
-WAITING_REWARD = -0.05 #-0.0005 # -1
-TIMEOUT_REWARD = -2 #0.2 #-0.8 #-50.
-ROAD_END_REWARD =  -0.2 #-0.8 #-50
-TOO_SLOW_REWARD = -0.1 #-0.005 #-5.
-OFFROAD_REWARD = -0.0005 #-0.01 #-1. # gets scaled by the amount of distance offroad
-HEADING_REWARD = -0.00001 #-0.00005 # gets multiplied by heading
+# need to reward tune
+GOAL_LANE_REWARD = 5000.
+FINISH_LINE = 10000.
+COLLISION_REWARD = -100000.
+WAITING_REWARD = -0.0001
+TIMEOUT_REWARD = -20
+ROAD_END_REWARD =  -20
+TOO_SLOW_REWARD = -1 
+OFFROAD_REWARD = -1
+HEADING_REWARD = -0.001 # gets multiplied by heading
 MAX_HEADING = pi / 3
-HEADING_TOO_HIGH_REWARD = -2
-NO_PROGRESS_REWARD = -0.002
-PROGRESS_REWARD = 0.5 #5 #0.7 #500.
-FINAL_LANE_PROGRESS_REWARD = 1.
-FINAL_LANE_RIGHT_REWARD = 1.
+HEADING_TOO_HIGH_REWARD = 0.
+BACKWARD_REWARD = -5000.
+PROGRESS_REWARD = 500.
 
 EGO_ID = 1
 
@@ -36,10 +35,10 @@ EGO_ID = 1
     terminal_state::Bool = false # this changes after we reach a terminal state (reach goal lane or crash) or we time out (timesteps_allowed reaches zero)
     collision::Bool = false # figure out a collision function
     starting_velocity::Float64 = 20.0
-    timestep::Float64 = 0.1
+    timestep::Float64 = 0.75
     model::lat_lon_driver = lat_lon_driver(starting_velocity, timestep)
     driver_models::Dict{Int, DriverModel} = Dict{Int, DriverModel}(EGO_ID => model)
-    recommended_speed::Float64 = 20.
+    recommended_speed::Float64 = 18.
 end
 
 # this needs to return the next state and reward
@@ -57,9 +56,9 @@ function POMDPs.gen(mdp::laneChangeMDP, s::Scene, a::Int, rng::AbstractRNG)
     #     direction = 0
         # assign negative reward for trying to switch to a new lane that doesn't exist - for now, only do this after the warm-up phase.
         # I believe the propagate function will take care of actually switching the action to a non-offroad one
-    if direction == 1 && ego_lane == mdp.env.nlanes || direction == -1 && ego_lane == 1
-        r += OFFROAD_REWARD
-    end
+    # if direction == 1 && ego_lane == mdp.env.nlanes || direction == -1 && ego_lane == 1
+    #     r += OFFROAD_REWARD
+    # end
 
     # I think that I may have to manually do this next line to increment the acceleration appropriately
     mdp.model.long_model.a += accel
@@ -108,6 +107,8 @@ function POMDPs.gen(mdp::laneChangeMDP, s::Scene, a::Int, rng::AbstractRNG)
     return (sp = scene, r=r+POMDPs.reward(mdp, s, a, scene))
 end
 
+# POMDPs.observations(mdp::laneChangeMDP)
+
 POMDPs.discount(mdp::laneChangeMDP) = mdp.discount_factor
 POMDPs.actions(mdp::laneChangeMDP) = collect(1:9)
 POMDPs.n_actions(mdp::laneChangeMDP) = 9
@@ -145,29 +146,29 @@ function POMDPs.reward(mdp::laneChangeMDP, s::Scene, a::Int64, sp::Scene)
     
     # next, get the lane that the ego vehicle is in
     ego_veh = get_by_id(sp, EGO_ID) #sp[EGO_ID]
+    vehicle_width = ego_veh.def.width
+    lane_break_distance = DEFAULT_LANE_WIDTH / 2 - vehicle_width / 2
     ego_lane = get_lane(mdp.env.roadway, ego_veh.state).tag.lane
     mdp.env.collision = collision_checker(sp, EGO_ID)
     r = 0.
     if mdp.env.collision                # penalize if there is a collision, should only be caused by ego vehicle for now
         mdp.terminal_state = true
-        # @show "collision"
         r += COLLISION_REWARD
-    elseif ego_lane == mdp.env.desired_lane && abs(ego_veh.state.posF.t) < 0.1 && abs(ego_veh.state.posF.ϕ) < pi/3  # reward for reaching the desired lane
+    elseif ego_lane == mdp.env.desired_lane && abs(ego_veh.state.posF.t) < lane_break_distance && abs(ego_veh.state.posF.ϕ) < π/6  # reward for reaching the desired lane
         mdp.terminal_state = true
-        # @show "finish line"
         r += FINISH_LINE
+    elseif ego_lane == mdp.env.desired_lane
+        r += GOAL_LANE_REWARD
     elseif mdp.env.num_steps >= mdp.env.max_steps # timed out - not sure if this is a good way to do this but let's give it a shot!
         mdp.terminal_state = true
-        # @show "timeout"
         r += TIMEOUT_REWARD
     elseif ego_veh.state.posG.x >= mdp.env.road_length  # penalizing for reaching the end of the road without gettting to desired lane
         mdp.terminal_state = true
-        # @show "end of road"
         r += ROAD_END_REWARD
     else
-        # @show "not terminal"
         mdp.terminal_state = false
         r += WAITING_REWARD
+        r += abs(ego_veh.state.posF.ϕ) * HEADING_REWARD
     end
 
 
@@ -177,10 +178,14 @@ function POMDPs.reward(mdp::laneChangeMDP, s::Scene, a::Int64, sp::Scene)
     end
 
     if abs(ego_veh.state.posF.ϕ) > MAX_HEADING
-        r += HEADING_TOO_HIGH_REWARD
+        r += (abs(ego_veh.state.posF.ϕ) - MAX_HEADING) * HEADING_TOO_HIGH_REWARD
     end
 
-    if ego_lane > mdp.env.current_lane
+    if abs(ego_veh.state.posF.ϕ) > π/2
+        r += BACKWARD_REWARD
+    end
+
+    if ego_lane > mdp.env.current_lane && abs(ego_veh.state.posF.ϕ) < pi/2 # don't reward if progress was made by going backwards
         r += PROGRESS_REWARD
         mdp.env.current_lane = ego_lane
     end
@@ -192,6 +197,8 @@ end
 # the reward function changes the isterminal function, and I believe this should work just fine
 function POMDPs.isterminal(mdp::laneChangeMDP) 
     ego_veh = get_by_id(mdp.env.scene, EGO_ID) #sp[EGO_ID]
+    vehicle_width = ego_veh.def.width
+    lane_break_distance = DEFAULT_LANE_WIDTH / 2 - vehicle_width / 2
     ego_lane = get_lane(mdp.env.roadway, ego_veh.state).tag.lane
     mdp.env.collision = collision_checker(mdp.env.scene, EGO_ID)
     # if mdp.env.collision || (ego_lane == mdp.env.desired_lane && abs(ego.state.posF.t) < 0.1) || mdp.env.num_steps >= mdp.env.max_steps || ego_veh.state.posG.x >= mdp.env.road_length
@@ -202,7 +209,7 @@ function POMDPs.isterminal(mdp::laneChangeMDP)
     if mdp.env.collision                # penalize if there is a collision, should only be caused by ego vehicle for now
         @show "collision"
         return true
-    elseif ego_lane == mdp.env.desired_lane && abs(ego_veh.state.posF.t) < 0.1 && abs(ego_veh.state.posF.ϕ) < pi/3 # reward for reaching the desired lane
+    elseif ego_lane == mdp.env.desired_lane && abs(ego_veh.state.posF.t) < lane_break_distance && abs(ego_veh.state.posF.ϕ) < π/6 # reward for reaching the desired lane
         @show "finish line"
         return true
     elseif mdp.env.num_steps >= mdp.env.max_steps # timed out - not sure if this is a good way to do this but let's give it a shot!
@@ -283,6 +290,20 @@ function get_offroad_distance(vehicle::VehicleState, env::laneChangeEnvironment)
     else
         return abs(y - bottom_y_bound)
     end
+end
+
+function get_observation(mdp::laneChangeMDP)
+    # return scene with a little noise added to all the states of the other vehicles - for now, just mess with x-y coods, and not theta or v
+    scene = deepcopy(mdp.env.scene)
+    dist = Normal()
+    veh_idx = EGO_ID + 1
+    while veh_idx <= env.ncars + 1
+        vehicle = scene[veh_idx]
+        vehicle.state.posG.x += rand(dist)
+        vehicle.state.posG.y += rand(dist)
+        veh_idx += 1
+    end
+    return scene
 end
 
 function simulate(mdp::laneChangeMDP, policy::Policy)
