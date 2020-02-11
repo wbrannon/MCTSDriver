@@ -17,7 +17,7 @@ DIR_LEFT =  1
 MIN_LANE_CHANGE_HEADWAY = 10. # m
 NUM_DIRECTIONS = 3
 TIMESTEP = 0.1
-LONG_ACCEL = 1 #* TIMESTEP # m/s^2
+LONG_ACCEL = 2 #* TIMESTEP # m/s^2
 LAT_ACCEL = 0.5 #* TIMESTEP # m/s^2
 RIGHT_LANE_IDX = 1 # change this if the orientation changes for some reason
 

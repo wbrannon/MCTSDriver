@@ -4,6 +4,7 @@ using POMDPModels
 using Random
 using Parameters
 using Statistics
+using LinearAlgebra
 
 include("mdp_definitions.jl")
 include("action_space.jl")
@@ -11,19 +12,22 @@ include("lane_change_env.jl")
 include("lat_lon_driver.jl")
 
 # need to reward tune
-GOAL_LANE_REWARD = 5000.
+GOAL_LANE_REWARD = 200.
 FINISH_LINE = 10000.
-COLLISION_REWARD = -100000.
-WAITING_REWARD = -0.0001
+COLLISION_REWARD = -10000.
+WAITING_REWARD = -0.01
 TIMEOUT_REWARD = -20
 ROAD_END_REWARD =  -20
-TOO_SLOW_REWARD = -1 
+TOO_SLOW_REWARD = -10
+TOO_FAST_REWARD = 0.
 OFFROAD_REWARD = -1
-HEADING_REWARD = -0.001 # gets multiplied by heading
+HEADING_REWARD = -0.01 # gets multiplied by heading
 MAX_HEADING = pi / 3
-HEADING_TOO_HIGH_REWARD = 0.
+HEADING_TOO_HIGH_REWARD = 0. #-0.001
+HARD_DECEL_REWARD = -1.
 BACKWARD_REWARD = -5000.
-PROGRESS_REWARD = 500.
+PROGRESS_REWARD = 100.
+CLOSENESS_REWARD = -10.
 
 EGO_ID = 1
 
@@ -43,29 +47,28 @@ end
 
 # this needs to return the next state and reward
 function POMDPs.gen(mdp::laneChangeMDP, s::Scene, a::Int, rng::AbstractRNG)
-    scene = deepcopy(s)
+    scene = deepcopy(s) # have to deepcopy here because we end up returning sp (scene) and a reward dependent on s
+
     # define action_map function that maps an integer to an action model
     ego_vehicle = get_by_id(s, EGO_ID)
     ego_lane = get_lane(mdp.env.roadway, ego_vehicle.state).tag.lane
     lane_width = get_lane(mdp.env.roadway, ego_vehicle.state).width
-    r = 0
     accel, direction = action_map(mdp, a)
-    # start out for a second going straight to warm up
-    # if mdp.env.num_steps <= 2
-    #     a = 5
-    #     direction = 0
-        # assign negative reward for trying to switch to a new lane that doesn't exist - for now, only do this after the warm-up phase.
-        # I believe the propagate function will take care of actually switching the action to a non-offroad one
-    # if direction == 1 && ego_lane == mdp.env.nlanes || direction == -1 && ego_lane == 1
-    #     r += OFFROAD_REWARD
-    # end
+    r = 0.
 
     # I think that I may have to manually do this next line to increment the acceleration appropriately
+    # if mdp.timestep == 0.75
     mdp.model.long_model.a += accel
+    # end
+
     # place appropriate actions to agent's long_model, lat_model, and lane_change_model here based on whatever a is
     mdp.model.lane_change_model.dir = direction
-    observe!(mdp.model, s, mdp.env.roadway, EGO_ID)
+    observe!(mdp.model, scene, mdp.env.roadway, EGO_ID) # here, we are changing the direction of the car if trying to go offroad, and modifying our lateral acceleration
+                                                        # it then calls track_longitudinal and track_lateral
+
     action = LatLonAccel(mdp.model.lat_model.a, mdp.model.long_model.a)
+
+
     # propagate the ego vehicle first, make sure this doesn't cause any issues
     new_ego_state = propagate(ego_vehicle, action, EGO_ID, mdp.env.roadway, mdp.timestep)
     scene[EGO_ID] = Entity(new_ego_state, scene[EGO_ID].def, scene[EGO_ID].id)
@@ -94,17 +97,46 @@ function POMDPs.gen(mdp::laneChangeMDP, s::Scene, a::Int, rng::AbstractRNG)
         end
     end
 
+    # need to check at finer timestep if a collision is happening (otherwise we might jump across collisions and not detect them)
+    # I guess this is a constant acceleration model?
+    if mdp.timestep == 0.75 # only check this if we are in the planning phase - if not, then this isn't needed
+        finer_scene = deepcopy(s)
+        collision_checker_timestep = 0.25
+        num_finer_steps = convert(Int, mdp.timestep / collision_checker_timestep) - 1
+        # finer_scene = deepcopy(s)
+        for i=1:num_finer_steps
+            ego_vehicle = finer_scene[EGO_ID]
+            new_ego_state = propagate(ego_vehicle, action, EGO_ID, mdp.env.roadway, collision_checker_timestep)
+            finer_scene[EGO_ID] = Entity(new_ego_state, finer_scene[EGO_ID].def, finer_scene[EGO_ID].id)
+            for i in EGO_ID+1:length(finer_scene)
+                veh = finer_scene[i]
+                new_state = propagate(veh, acts[i], mdp.env.roadway, collision_checker_timestep)
+                finer_scene[i] = Entity(new_state, veh.def, veh.id)
+            end
+            # if this if statement is true, then we return the next scene at a smaller timestep than when we plan - this is a little wonky
+            if collision_checker(finer_scene, EGO_ID)
+                return(sp=finer_scene, r=POMDPs.reward(mdp, s, a, finer_scene))
+            end
+        end
+    end
+
     # next, propogate the scene for everyone else, this is taken from the tick! function in simulate.jl
     for i in EGO_ID+1:length(scene)
         # vehicle_idx = findfirst(i, scene)
         veh = scene[i]
         new_state = propagate(veh, acts[i], mdp.env.roadway, mdp.timestep)
+        if new_state.posG.x == mdp.env.road_length
+            posG = VecSE2(0., new_state.posG.y, 0.)
+            posF = Frenet(posG, mdp.env.roadway)
+            new_state = VehicleState(posF, mdp.env.roadway, veh.state.v)
+        end
         scene[i] = Entity(new_state, veh.def, veh.id)
     end
+
+    
     # update mdp scene
     mdp.env.scene = scene
-    # r += POMDPs.reward(mdp, s, a, scene)
-    return (sp = scene, r=r+POMDPs.reward(mdp, s, a, scene))
+    return (sp = scene, r=POMDPs.reward(mdp, s, a, scene))
 end
 
 # POMDPs.observations(mdp::laneChangeMDP)
@@ -145,7 +177,7 @@ function POMDPs.reward(mdp::laneChangeMDP, s::Scene, a::Int64, sp::Scene)
     # first, check if there is a collision
     
     # next, get the lane that the ego vehicle is in
-    ego_veh = get_by_id(sp, EGO_ID) #sp[EGO_ID]
+    ego_veh = get_by_id(sp, EGO_ID)
     vehicle_width = ego_veh.def.width
     lane_break_distance = DEFAULT_LANE_WIDTH / 2 - vehicle_width / 2
     ego_lane = get_lane(mdp.env.roadway, ego_veh.state).tag.lane
@@ -154,10 +186,10 @@ function POMDPs.reward(mdp::laneChangeMDP, s::Scene, a::Int64, sp::Scene)
     if mdp.env.collision                # penalize if there is a collision, should only be caused by ego vehicle for now
         mdp.terminal_state = true
         r += COLLISION_REWARD
-    elseif ego_lane == mdp.env.desired_lane && abs(ego_veh.state.posF.t) < lane_break_distance && abs(ego_veh.state.posF.ϕ) < π/6  # reward for reaching the desired lane
+    elseif ego_lane == mdp.env.desired_lane && abs(ego_veh.state.posF.t) < lane_break_distance && abs(ego_veh.state.posF.ϕ) < π/6  #&& ego_veh.state.v >= mdp.recommended_speed# reward for reaching the desired lane
         mdp.terminal_state = true
         r += FINISH_LINE
-    elseif ego_lane == mdp.env.desired_lane
+    elseif ego_lane == mdp.env.desired_lane && abs(ego_veh.state.posF.ϕ) < MAX_HEADING
         r += GOAL_LANE_REWARD
     elseif mdp.env.num_steps >= mdp.env.max_steps # timed out - not sure if this is a good way to do this but let's give it a shot!
         mdp.terminal_state = true
@@ -171,21 +203,33 @@ function POMDPs.reward(mdp::laneChangeMDP, s::Scene, a::Int64, sp::Scene)
         r += abs(ego_veh.state.posF.ϕ) * HEADING_REWARD
     end
 
+    # closest_neighbor_distance = get_nearest_neighbor_distance(mdp, sp, EGO_ID)
+    # if closest_neighbor_distance != Inf
+    #     r += CLOSENESS_REWARD/closest_neighbor_distance
+    # end
 
-    #penalize slowing down too much
+    # penalize going too slow
     if ego_veh.state.v < mdp.recommended_speed
         r += (mdp.recommended_speed - ego_veh.state.v) * TOO_SLOW_REWARD
+    # also penalize going too fast
+    elseif ego_veh.state.v > mdp.recommended_speed + 4.
+        r += (ego_veh.state.v - (mdp.recommended_speed + 4.)) * TOO_FAST_REWARD
     end
 
-    if abs(ego_veh.state.posF.ϕ) > MAX_HEADING
-        r += (abs(ego_veh.state.posF.ϕ) - MAX_HEADING) * HEADING_TOO_HIGH_REWARD
+    # penalize braking too hard
+    if mdp.model.long_model.a < -mdp.model.long_model.d_comfort 
+        r += abs(mdp.model.long_model.a) - mdp.model.long_model.d_comfort * (HARD_DECEL_REWARD)
     end
+
+    # if abs(ego_veh.state.posF.ϕ) > MAX_HEADING
+    #     r += (abs(ego_veh.state.posF.ϕ) - MAX_HEADING) * HEADING_TOO_HIGH_REWARD
+    # end
 
     if abs(ego_veh.state.posF.ϕ) > π/2
         r += BACKWARD_REWARD
     end
 
-    if ego_lane > mdp.env.current_lane && abs(ego_veh.state.posF.ϕ) < pi/2 # don't reward if progress was made by going backwards
+    if ego_lane > mdp.env.current_lane && abs(ego_veh.state.posF.t) < lane_break_distance && abs(ego_veh.state.posF.ϕ) < MAX_HEADING # don't reward if progress was made by going backwards
         r += PROGRESS_REWARD
         mdp.env.current_lane = ego_lane
     end
@@ -209,7 +253,7 @@ function POMDPs.isterminal(mdp::laneChangeMDP)
     if mdp.env.collision                # penalize if there is a collision, should only be caused by ego vehicle for now
         @show "collision"
         return true
-    elseif ego_lane == mdp.env.desired_lane && abs(ego_veh.state.posF.t) < lane_break_distance && abs(ego_veh.state.posF.ϕ) < π/6 # reward for reaching the desired lane
+    elseif ego_lane == mdp.env.desired_lane && abs(ego_veh.state.posF.t) < lane_break_distance && abs(ego_veh.state.posF.ϕ) < π/6 #&& ego_veh.state.v >= mdp.recommended_speed# reward for reaching the desired lane
         @show "finish line"
         return true
     elseif mdp.env.num_steps >= mdp.env.max_steps # timed out - not sure if this is a good way to do this but let's give it a shot!
@@ -245,15 +289,31 @@ function POMDPs.convert_s(::Type{V}, s::Scene, mdp::laneChangeMDP) where V<:Abst
     return convert(V, features)
 end
 
-# not sure if I need to define the transition function - shouldn't need to since the gen and transition function are redundant
-# POMDPs.transition()
-
 # define function that takes in an integer (1-9) and returns an action
 function action_map(mdp::laneChangeMDP, a::Int64)
     # get safe actions first
     accel, direction = get_action(a)
     return accel, direction
 end
+
+function get_nearest_neighbor_distance(mdp::laneChangeMDP, scene::Scene, ego_id::Int)
+    ncars = mdp.env.ncars
+    if ncars == 0
+        return Inf
+    end
+    starting_idx = ego_id + 1
+    ego_position = scene[ego_id].state.posG
+    ego_coods = [ego_position.x, ego_position.y]
+    distances = []
+    for i=starting_idx:ncars+1
+        car_position = scene[i].state.posG
+        car_coods = [car_position.x, car_position.y]
+        push!(distances, norm(car_coods - ego_coods))
+    end
+    nearest_neighbor_distance = minimum(distances)
+end
+
+
 
 # need to normalize feature vector to put in network
 function normalize_features(features::Array{Float64})

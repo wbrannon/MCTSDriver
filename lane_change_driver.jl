@@ -26,6 +26,7 @@ function observe!(model::laneChanger, scene::Frame{Entity{S, D, I}}, roadway::Ro
     curr_lane = get_lane(roadway, veh_ego).tag.lane
     num_lanes = length(roadway.segments[1].lanes)
 
+
     # initialize as false, and proceed to check if they are actually true
     left_lane_exists = right_lane_exists = false
 
@@ -43,6 +44,10 @@ function observe!(model::laneChanger, scene::Frame{Entity{S, D, I}}, roadway::Ro
     elseif !left_lane_exists && model.dir == 1   # do the same with left lane
         model.dir = 0
     end
+
+    # if abs(scene[egoid].state.posF.t) > 1.
+    #     model.dir = 0
+    # end
 
     return model
 end

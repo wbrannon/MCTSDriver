@@ -2,8 +2,9 @@ using AutomotiveDrivingModels
 
 
 MAX_ACCEL = 3.
-COMFORTABLE_DECEL = 2.
-MAX_DECEL = 6.
+COMFORTABLE_DECEL = 4.
+MAX_DECEL = 8.
+HARD_DECEL = 4.
 
 # make lane change driver almost exactly like Tim's lane changer, except don't check for safety when trying to change
 

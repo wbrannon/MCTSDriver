@@ -70,7 +70,7 @@ function observe!(driver_model::lat_lon_driver, scene::Frame{Entity{S,D,I}}, roa
 
     ego_vehicle = scene[egoid]
     vehicle_index = findfirst(egoid, scene)
-    lane_change_action = rand(driver_model.lane_change_model)
+    lane_change_action = rand(driver_model.lane_change_model) # all this does is convert the direction into a LaneChangeChoice object
     lane_offset = get_lane_offset(lane_change_action, scene, roadway, vehicle_index)
     lateral_speed = velf(ego_vehicle.state).t #convert(Float64, get(VELFT, scene, roadway, vehicle_index))
 
