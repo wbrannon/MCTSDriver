@@ -22,7 +22,7 @@ function simulate_pomdp()
     planning_timestep = mdp.timestep
     sim_timestep = 0.05
     speedup = round(Int64, planning_timestep / sim_timestep)
-    max_steps = 500 # say that steps are 0.05s apart
+    max_steps = 300 # say that steps are 0.05s apart
     # scene = deepcopy(mdp.env.scene)
     a = 0 #action(planner, mdp.env.scene)
     # mdp.env.scene = scene
@@ -31,7 +31,7 @@ function simulate_pomdp()
         scene = deepcopy(mdp.env.scene) # make copy that won't be messed up
         model = deepcopy(mdp.model)
         # implement plan only if we're in the first timestep or if we're at a point where we need to plan again
-        if mod(t, speedup) == 0 || mod(t, speedup) == round(Int64, speedup / 2) #|| mod(t+1, speedup) == round(Int64, 2 * speedup / 3) 
+        if mod(t, speedup) == 0 || mod(t, speedup) == round(Int64, speedup / 2) #|| mod(t, speedup) == round(Int64, 2 * speedup / 3) 
             mdp.timestep = planning_timestep # use planning_timestep only when planning
             a = action(planner, mdp.env.scene)
             mdp.model = model

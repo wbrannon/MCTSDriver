@@ -74,6 +74,7 @@ function observe!(driver_model::lat_lon_driver, scene::Frame{Entity{S,D,I}}, roa
     lane_offset = get_lane_offset(lane_change_action, scene, roadway, vehicle_index)
     lateral_speed = velf(ego_vehicle.state).t #convert(Float64, get(VELFT, scene, roadway, vehicle_index))
 
+    
     AutomotiveDrivingModels.track_lateral!(driver_model.lat_model, lane_offset, lateral_speed)
     track_longitudinal!(driver_model.long_model)
 

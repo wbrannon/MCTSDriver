@@ -14,7 +14,7 @@ using Parameters
     starting_lane::Int = 1
     current_lane::Int = starting_lane
     desired_lane::Int = nlanes
-    ncars::Int = 29 # refers to cars other than the ego vehicle            
+    ncars::Int = 19 # refers to cars other than the ego vehicle            
     road_length::Float64 = 300.
     roadway::Roadway = gen_straight_roadway(nlanes, road_length)
     scene::Scene = Scene()
@@ -47,7 +47,7 @@ function populate_env!(ncars::Int, nlanes::Int, road_length::Float64, roadway::R
     spots_taken = [ego_spot, (1,30.)] # make array of tuples to determine if a spot is taken up - this first one is where we want AV to be 
     curve = roadway[1].lanes[1].curve
     min_speed = 18.0 # m/s
-    max_speed = 22.0 # m/s 
+    max_speed = 23.0 # m/s 
     number_car_placed = 2   # start at 2 because the ego vehicle takes up index 1
     for i in 1:ncars
         car_placed = false
