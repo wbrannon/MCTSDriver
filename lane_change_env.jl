@@ -10,7 +10,7 @@ using Parameters
 # this may or may not make it easier
 # use populate_env! function to populate roadway
 @with_kw mutable struct laneChangeEnvironment
-    nlanes::Int = 4 # at first, just want to switch one lane
+    nlanes::Int = 3 # at first, just want to switch one lane
     starting_lane::Int = 1
     current_lane::Int = starting_lane
     desired_lane::Int = nlanes

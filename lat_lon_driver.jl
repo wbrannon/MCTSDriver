@@ -81,4 +81,4 @@ function observe!(driver_model::lat_lon_driver, scene::Frame{Entity{S,D,I}}, roa
     return driver_model
 end
 
-Base.rand(rng::AbstractRNG, driver::lat_lon_driver) = LatLonAccel(rand(rng, driver.mlat), rand(rng, driver.mlon).a)
+Base.rand(rng::AbstractRNG, driver::lat_lon_driver) = LatLonAccel(rand(rng, driver.lat_model), rand(rng, driver.long_model).a)

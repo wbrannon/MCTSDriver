@@ -91,3 +91,29 @@ function AutomotiveDrivingModels.propagate(vehicle::Entity{VehicleState, Vehicle
 
     return new_vehicle_state
 end
+
+function const_vel_propagate(vehicle::Entity{VehicleState, VehicleDef, Int64}, roadway::Roadway, timestep::Float64)
+    agent = vehicle.state # should pick up the AgentState here
+    x = agent.posG.x
+    y = agent.posG.y
+    θ = agent.posG.θ
+    v = agent.v 
+    ϕ = posf(agent).ϕ
+    ds = v*cos(ϕ)
+    t = posf(agent).t
+    dt = v*sin(ϕ)
+
+    # max_heading_change_rate = pi/6  # assume that in one second, our heading can be changed by 30 degrees at most
+
+    timestep² = timestep*timestep
+    Δs = ds*timestep 
+    Δt = dt*timestep 
+
+
+    posG = VecSE2{Float64}(x+Δs, y+Δt, θ)
+
+
+    new_vehicle_state = VehicleState(posG, roadway, v)
+
+    return new_vehicle_state
+end
